@@ -1,0 +1,94 @@
+syntax = "proto3";
+
+package raftRpcProctoc;
+
+option cc_generic_services = true;  //开启 stub 服务
+
+//日志
+message LogEntry {
+    bytes Command   = 1;
+    int32 LogTerm   = 2;
+    int32 LogIndex  = 3;
+}
+
+// AppendEntriesArgs 由leader复制log条目，也可以当做是心跳连接，注释中的rf为leader节点
+// Follower接收到这个消息后，会检查PrevLogIndex和PrevLogTerm，
+// 如果匹配，Follower会接受新的条目并更新自己的日志和提交索引；
+// 如果不匹配，Follower会拒绝条目并要求Leader提供一个更早的日志条目来重新同步。
+message AppendEntriesArgs  {
+	//	下面几个参数和论文中相同
+	int32 Term                  = 1;        // 当前任期编号
+	int32 LeaderId              = 2;        // 当前 Leader 唯一标识符，Follower使用这个信息来识别和响应正确的Leader。
+	int32 PrevLogIndex          = 3;        // Leader日志中紧接在新条目前面的日志条目的索引。Leader使用这个信息来确保Follower的日志在新条目之前与自己的日志匹配。
+	int32 PrevLogTerm           = 4;        // PrevLogIndex对应的日志条目的任期编号。Leader使用这个信息来验证Follower的日志一致性。
+	repeated LogEntry Entries   = 5;        // 可变长度的日志条目列表，由Leader发送给Follower。Follower将这些条目添加到自己的日志中，从而实现日志的复制。
+	int32 LeaderCommit          = 6;        // Leader已知的最高已提交日志条目的索引。Follower会使用这个信息来更新自己的提交索引，从而决定哪些日志条目可以安全地应用到状态机。
+}
+
+// AppendEntriesReply 论文中没有提及返回要设置哪些状态
+message AppendEntriesReply {
+	int32 Term              = 1;            // 这是Follower当前的任期编号。如果Follower的任期编号比Leader的大，Leader会发现自己已经过时，从而转换为Follower状态并开始新的选举。
+	bool Success            = 2;            // 表示Follower是否成功接受了Leader发送的日志条目
+	int32 UpdateNextIndex   = 3;            // 快速调整leader对应的nextIndex，nextIndex是Leader为每个Follower维护的，表示下一次发送日志条目的索引，如果Follower回复Success为false，Leader可能需要减少nextIndex值，以便从更早的日志条目开始重新同步。
+	int32 AppState          = 4;            // 用来标识节点（网络）状态
+}
+
+message RequestVoteArgs  {
+	int32 Term         = 1;     // 表示当前的任期号
+	int32 CandidateId  = 2;     // 候选者的唯一标识符，如果投票请求被接受，节点会把票投给这个CandidateId所标识的候选者。
+	int32 LastLogIndex = 3;     // 候选者日志中最后一条日志的索引
+	int32 LastLogTerm  = 4;     // 候选者日志中最后一条日志的任期号
+}
+
+// RequestVoteReply
+// example RequestVote RPC reply structure.
+// field names must start with capital letters!
+message RequestVoteReply  {
+	int32 Term        = 1;  //  接收节点当前的任期号
+	bool VoteGranted  = 2;  // 接收节点是否同意给予投票
+	int32 VoteState   = 3;  // 投票状态信息
+}
+
+message InstallSnapshotRequest  {
+	int32 LeaderId                 = 1;     // 发送快照请求的Leader节点的ID，可以确认是哪个节点（Leader）发起的快照安装过程
+	int32 Term                     = 2;     // 表示当前的任期号
+	int32 LastSnapShotIncludeIndex = 3;     // 快照中包含的最后一条日志条目的索引，在快照安装完成后，Follower节点的日志将被截断至该索引之前，并用快照替换。
+	int32 LastSnapShotIncludeTerm  = 4;     // 快照中最后一条日志条目的任期号，用于确保快照中的日志条目是最新的，避免安装过时的快照数据
+	bytes Data                     = 5;     // 快照信息，用于传输快照的实际数据
+}
+
+// InstallSnapshotResponse 只用返回Term，因为对于快照只要Term是符合的就是无条件接受的
+message InstallSnapshotResponse  {
+	int32 Term  = 1;
+}
+
+//只有raft节点之间才会涉及rpc通信
+service raftRpc  
+{
+    rpc AppendEntries(AppendEntriesArgs) returns(AppendEntriesReply);
+    rpc InstallSnapshot (InstallSnapshotRequest) returns (InstallSnapshotResponse);
+    rpc RequestVote (RequestVoteArgs) returns (RequestVoteReply);
+}
+
+// message ResultCode
+// {
+//     int32 errcode = 1;
+//     bytes errmsg = 2;
+// }
+
+// message GetFriendsListRequest  //请求，响应
+// {
+//     uint32 userid = 1;
+// }
+
+// message GetFriendsListResponse  //请求，响应
+// {
+//     ResultCode result = 1;
+//     repeated bytes friends = 2;
+// }
+
+// // 好友模块
+// service FiendServiceRpc  //具体的服务模块和服务方法
+// {
+//     rpc GetFriendsList(GetFriendsListRequest) returns(GetFriendsListResponse);
+// }
