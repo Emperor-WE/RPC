@@ -20,17 +20,18 @@ void watch_io_read()
 
 void test_accept()
 {
+    std::cout << "[server]: test_accept" << std::endl; 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     socklen_t len = sizeof(addr);
     int fd = accept(listen_sock, (struct sockaddr *)&addr, &len);
     if (fd < 0)
     {
-        std::cout << "fd = " << fd << ",accept error" << std::endl;
+        std::cout << "[server]: fd = " << fd << ",accept error" << std::endl;
     }
     else
     {
-        std::cout << "fd = " << fd << ",accept success" << std::endl;
+        std::cout << "[server]: fd = " << fd << ",accept success" << std::endl;
         fcntl(fd, F_SETFL, O_NONBLOCK);
         monsoon::IOManager::GetThis()->addEvent(fd, monsoon::READ, [fd]()
             {
@@ -46,7 +47,12 @@ void test_accept()
                     }
                     if (ret <= 0)
                     {
-                        if (errno == EAGAIN) continue;
+                        if (ret == -1 && errno == EAGAIN) 
+                        {
+                            std::cout << "[server]: nonblock--no data read!" << std::endl;
+                            continue;
+                        }
+                        std::cout << "[server]: recv error!" << std::endl;
                         close(fd);
                         break;
                     }
